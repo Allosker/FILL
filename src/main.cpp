@@ -161,7 +161,7 @@ int main()
 {
 	try
 	{
-		fill::Image image{ FILE_PATH"image_f.png" };
+		fill::Image image{ FILE_PATH"image.png" };
 
 
 
@@ -170,7 +170,10 @@ int main()
 
 		out.open(FILE_PATH"file.pam", std::ios::binary);
 
-		out.write("P7\nWIDTH 1644\nHEIGHT 1562\nDEPTH 8\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n", 71);
+		std::string s{ "P7\nWIDTH " + std::to_string(image.getWidth()) + 
+					   "\nHEIGHT " + std::to_string(image.getHeight()) + "\nDEPTH 8\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n" };
+
+		out.write(s.c_str(), s.size());
 
 
 		out.write(reinterpret_cast<const char*>(image.data()), image.size());

@@ -21,82 +21,25 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-
+#include <span>
 // DEFLATE algorithm
 #include "zlib.h"
 
+struct Chunk;
 
 namespace fill
 {
 	inline void read_uint32(std::ifstream& stream, std::uint32_t& integer) noexcept;
 
 	inline std::uint32_t uint8_as_uint32(std::uint8_t byte0, std::uint8_t byte1, std::uint8_t byte2, std::uint8_t byte3) noexcept;
-	inline std::string uint32_as_string(std::uint32_t __string) noexcept;
+	inline std::string uint32_as_string(std::uint32_t _string) noexcept;
 
-	inline int inflate(std::vector<std::uint8_t>& in, std::vector<std::uint8_t>& dest, std::uint32_t chunk_size = 16384);
+	inline std::vector<std::uint8_t> inflate(const std::vector<std::uint8_t>& in, std::uint32_t chunk_size = 16384);
 
 
 	class Image
 	{
 	public:
-
-		struct Chunk
-		{
-			std::uint32_t length{};
-			std::uint32_t type{};
-
-			std::vector<std::uint8_t> data{};
-			
-			std::uint32_t CRC{};
-		};
-
-		struct ColorType
-		{
-			ColorType() = default;
-
-			ColorType(std::uint8_t t)
-				: type{static_cast<Type>(t)}
-			{ }
-
-			enum Type
-				: std::uint8_t
-			{
-				Greyscale = 0,
-				TrueColor = 2,
-				Indexed_Color = 3,
-				Greyscale_with_Alpha = 4,
-				TrueColor_with_Alpha = 6
-			};
-
-			std::uint8_t asBytes()
-			{
-				switch (type)
-				{
-				case Greyscale:
-					return 1;
-					break;
-
-				case TrueColor:
-					return 3;
-					break;
-
-				case Indexed_Color:
-					return 0;
-					break;
-
-				case Greyscale_with_Alpha:
-					return 3;
-					break;
-
-				case TrueColor_with_Alpha:
-					return 4;
-					break;
-				}
-			}
-			 
-			Type type;
-		};
-
 		
 	// == Constructors
 
@@ -109,6 +52,11 @@ namespace fill
 
 		void loadFromFile(const std::filesystem::path& path_to_file);
 
+		// For this function to work, both images must have:
+		// Same bit_depth, same color type
+		// Note: this will be changed later
+		void concatenate_images(Image&& image, bool concatenate_horizontaly=true);
+
 
 	// == Getters
 
@@ -116,13 +64,15 @@ namespace fill
 		std::uint32_t getHeight() const noexcept { return height; }
 		
 		std::uint8_t getBitDepth() const noexcept { return bit_depth; }
-		ColorType getColorType() const noexcept { return color_type; }
+		std::uint8_t getColorChannel() const noexcept { return color_channel; }
 
 		// size in bytes
 		const size_t size() const noexcept { return image_data.size(); }
 
 		const std::uint8_t* data() const noexcept { return image_data.data(); }
 		std::uint8_t* data() noexcept { return image_data.data(); }
+
+		std::vector<std::uint8_t>& getImage() noexcept { return image_data; }
 
 
 	private: 
@@ -142,9 +92,11 @@ namespace fill
 		std::vector<std::uint8_t> image_data{};
 
 		std::uint32_t width{}, height{};
-		std::uint8_t bit_depth{}, compression_method{}, filter_method{}, interlace_method{};
-		
-		ColorType color_type{};
+		std::uint8_t bit_depth{};
+		std::uint8_t color_channel{};
+
+		// Additional PNG options
+		std::uint8_t compression_method{}, filter_method{}, interlace_method{};
 	};
 
 

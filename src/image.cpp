@@ -2,6 +2,67 @@
 
 #include <array>
 
+// Utility Classes
+
+struct Chunk
+{
+	std::uint32_t length{};
+	std::uint32_t type{};
+
+	std::vector<std::uint8_t> data{};
+
+	std::uint32_t CRC{};
+};
+
+struct ColorType
+{
+	ColorType() = default;
+
+	ColorType(std::uint8_t t)
+		: type{ static_cast<Type>(t) }
+	{
+	}
+
+	enum Type
+		: std::uint8_t
+	{
+		Greyscale = 0,
+		TrueColor = 2,
+		Indexed_Color = 3,
+		Greyscale_with_Alpha = 4,
+		TrueColor_with_Alpha = 6
+	};
+
+	std::uint8_t asBytes()
+	{
+		switch (type)
+		{
+		case Greyscale:
+			return 1;
+			break;
+
+		case TrueColor:
+			return 3;
+			break;
+
+		case Indexed_Color:
+			return 0;
+			break;
+
+		case Greyscale_with_Alpha:
+			return 3;
+			break;
+
+		case TrueColor_with_Alpha:
+			return 4;
+			break;
+		}
+	}
+
+	Type type;
+};
+
+
 // Utility functions 
 
 void fill::read_uint32(std::ifstream& stream, std::uint32_t& integer) noexcept
@@ -28,23 +89,26 @@ std::uint32_t fill::uint8_as_uint32(std::uint8_t byte0, std::uint8_t byte1, std:
 	};
 }
 
-std::string fill::uint32_as_string(std::uint32_t __string) noexcept
+std::string fill::uint32_as_string(std::uint32_t _string) noexcept
 {
 	return 
 	{
-		static_cast<char>(*(reinterpret_cast<const char*>(&__string) + 3)),
-		static_cast<char>(*(reinterpret_cast<const char*>(&__string) + 2)),
-		static_cast<char>(*(reinterpret_cast<const char*>(&__string) + 1)),
-		static_cast<char>(*(reinterpret_cast<const char*>(&__string) + 0))
+		static_cast<char>(*(reinterpret_cast<const char*>(&_string) + 3)),
+		static_cast<char>(*(reinterpret_cast<const char*>(&_string) + 2)),
+		static_cast<char>(*(reinterpret_cast<const char*>(&_string) + 1)),
+		static_cast<char>(*(reinterpret_cast<const char*>(&_string) + 0))
 	};
 }
 
-int fill::inflate(std::vector<std::uint8_t>& in, std::vector<std::uint8_t>& dest, std::uint32_t chunk_size)
+std::vector<std::uint8_t> fill::inflate(const std::vector<std::uint8_t>& in, std::uint32_t chunk_size = 16384)
 {
 	if (in.size() > 4'294'967'295 /*Overflows if image's size is over 4GB*/)
 		throw std::runtime_error("ERROR::PNG_DEFLATE::Buffer overflow, size of file is superior to 4 GigaBytes");
 	if (in.size() <= 0)
 		throw std::runtime_error("ERROR::PNG_DEFLATE::In buffer doesn't contain any data");
+
+
+	std::vector<std::uint8_t> destination{};
 
 	z_stream strm;
 
@@ -68,7 +132,7 @@ int fill::inflate(std::vector<std::uint8_t>& in, std::vector<std::uint8_t>& dest
 	{
 		strm.avail_in = static_cast<uInt>(in.size());
 
-		strm.next_in = in.data();
+		strm.next_in = const_cast<std::uint8_t*>(in.data());
 
 		/* run inflate() on input until output buffer not full */
 		do
@@ -93,7 +157,7 @@ int fill::inflate(std::vector<std::uint8_t>& in, std::vector<std::uint8_t>& dest
 
 			std::uint16_t have = chunk_size - strm.avail_out;
 
-			dest.insert(dest.end(), out.begin(), out.begin() + have);
+			destination.insert(destination.end(), out.begin(), out.begin() + have);
 
 		} while (strm.avail_out == 0);
 
@@ -102,7 +166,7 @@ int fill::inflate(std::vector<std::uint8_t>& in, std::vector<std::uint8_t>& dest
 
 	/* clean up and return */
 	inflateEnd(&strm);
-	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
+	return destination;
 }
 
 
@@ -118,7 +182,7 @@ void fill::Image::loadFromFile(const std::filesystem::path& path_to_file)
 {
 	if (path_to_file.has_extension())
 	{
-		if (path_to_file.extension().string() == ".png")
+		if (stricmp(".png", path_to_file.extension().string().c_str()))
 			return loadFromPNG(path_to_file);
 
 		// Add other files
@@ -126,6 +190,70 @@ void fill::Image::loadFromFile(const std::filesystem::path& path_to_file)
 
 	throw std::runtime_error("ERROR::No compatible version of the program was found for the file: " + path_to_file.string());
 }
+
+void fill::Image::concatenate_images(Image&& image, bool concatenate_horizontaly = true)
+{
+	// ----- WARNING
+	// NEED to add more options to convert images to formats they both support if they aren't the same
+	// Good for now
+
+	if (concatenate_horizontaly)
+	{
+		std::uint32_t new_width = width + image.getWidth();
+		std::uint32_t new_height{};
+
+		if (height > image.getHeight())
+		{
+			new_height = height;
+
+			while (image.size() < size())
+			{
+				image.getImage().push_back(0);
+			}
+		}
+		else
+		{
+			new_height = image.getHeight();
+
+			while (size() < image.size())
+			{
+				image_data.push_back(0);
+			}
+		}
+
+		// TODO: make function to make one image hold the same parameters as the other
+
+		short bpp{ color_channel * bit_depth }; /*assume both images have the same values (for now)*/
+		short width_bytes_1{ width * bpp };
+		short width_bytes_2{ image.getWidth() * bpp };
+
+
+		for (std::uint64_t index_byte{}; index_byte < image_data.size(); index_byte++)
+		{
+			if (index_byte % width_bytes_1 == 0) /*start of line*/
+			{
+				std::uint64_t line_index{ index_byte / width_bytes_1 };
+
+				//image_data.insert(image_data.begin() + index_byte + width_bytes_1, )
+			}
+			
+		}
+
+
+		
+	}
+	else
+	{
+		height += image.getHeight();
+		width = (width > image.getWidth() ? width : image.getWidth());
+
+
+
+	}
+
+
+}
+
 
 void fill::Image::loadFromPNG(const std::filesystem::path& path_png)
 {
@@ -149,17 +277,19 @@ void fill::Image::loadFromPNG(const std::filesystem::path& path_png)
 		Chunk ihdr;
 		read_PNGchunk(file, ihdr); /*fetch IHDR chunk*/
 
-		/*if (uint32_as_string(ihdr.type) != "IHDR")
-			throw std::runtime_error("ERROR::WRONG_TYPE::File doesn't correspond to the PNG standard::No corresponding IHDR chunk");*/
+		if (uint32_as_string(ihdr.type) != "IHDR")
+			throw std::runtime_error("ERROR::WRONG_TYPE::File doesn't correspond to the PNG standard::No corresponding IHDR chunk");
 
 		// Fetch attributes
 		width = uint8_as_uint32(ihdr.data[0], ihdr.data[1], ihdr.data[2], ihdr.data[3]);
 		height = uint8_as_uint32(ihdr.data[4], ihdr.data[5], ihdr.data[6], ihdr.data[7]);
 		bit_depth = ihdr.data[8];
-		color_type = static_cast<ColorType>(ihdr.data[9]);
+		ColorType color_type = static_cast<ColorType>(ihdr.data[9]);
 		compression_method = ihdr.data[10];
 		filter_method = ihdr.data[11];
 		interlace_method = ihdr.data[12];
+
+		color_channel = color_type.asBytes();
 
 		
 		std::vector<uint8_t> raw_data{};
@@ -177,7 +307,7 @@ void fill::Image::loadFromPNG(const std::filesystem::path& path_png)
 
 		// Apply DEFLATE
 		std::vector<std::uint8_t> decompressed_data{};
-		inflate(raw_data, decompressed_data);
+		decompressed_data = inflate(raw_data);
 
 		// Process Data
 		unfilter_PNG(decompressed_data);
@@ -201,7 +331,7 @@ void fill::Image::read_PNGchunk(std::ifstream& stream, Chunk& chunk)
 
 void fill::Image::unfilter_PNG(std::vector<std::uint8_t>& filtered_data)
 {
-	short bpp{ color_type.asBytes() * (bit_depth / 8) };
+	short bpp{ color_channel * (bit_depth / 8) };
 
 	std::uint32_t width_bytes{ width * bpp };
 
