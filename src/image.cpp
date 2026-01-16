@@ -65,7 +65,7 @@ struct ColorType
 
 // Utility functions 
 
-void fill::read_uint32(std::ifstream& stream, std::uint32_t& integer) noexcept
+void read_uint32(std::ifstream& stream, std::uint32_t& integer) noexcept
 {
 	stream.read(reinterpret_cast<char*>(&integer), sizeof(integer));
 	integer =
@@ -77,7 +77,7 @@ void fill::read_uint32(std::ifstream& stream, std::uint32_t& integer) noexcept
 			);
 }
 
-std::uint32_t fill::uint8_as_uint32(std::uint8_t byte0, std::uint8_t byte1, std::uint8_t byte2, std::uint8_t byte3) noexcept
+std::uint32_t uint8_as_uint32(std::uint8_t byte0, std::uint8_t byte1, std::uint8_t byte2, std::uint8_t byte3) noexcept
 {
 	return
 	std::uint32_t
@@ -89,7 +89,7 @@ std::uint32_t fill::uint8_as_uint32(std::uint8_t byte0, std::uint8_t byte1, std:
 	};
 }
 
-std::string fill::uint32_as_string(std::uint32_t _string) noexcept
+std::string uint32_as_string(std::uint32_t _string) noexcept
 {
 	return 
 	{
@@ -100,7 +100,7 @@ std::string fill::uint32_as_string(std::uint32_t _string) noexcept
 	};
 }
 
-std::vector<std::uint8_t> fill::inflate(const std::vector<std::uint8_t>& in, std::uint32_t chunk_size = 16384)
+std::vector<std::uint8_t> inflate(const std::vector<std::uint8_t>& in, std::uint32_t chunk_size = 16384)
 {
 	if (in.size() > 4'294'967'295 /*Overflows if image's size is over 4GB*/)
 		throw std::runtime_error("ERROR::PNG_DEFLATE::Buffer overflow, size of file is superior to 4 GigaBytes");
@@ -182,7 +182,11 @@ void fill::Image::loadFromFile(const std::filesystem::path& path_to_file)
 {
 	if (path_to_file.has_extension())
 	{
-		if (stricmp(".png", path_to_file.extension().string().c_str()))
+		std::string extension{ path_to_file.extension().string() };
+		std::transform(extension.begin(), extension.end(), extension.begin(),
+			[](unsigned char c) { return std::tolower(c); });
+
+		if (extension == ".png")
 			return loadFromPNG(path_to_file);
 
 		// Add other files
@@ -191,69 +195,84 @@ void fill::Image::loadFromFile(const std::filesystem::path& path_to_file)
 	throw std::runtime_error("ERROR::No compatible version of the program was found for the file: " + path_to_file.string());
 }
 
-void fill::Image::concatenate_images(Image&& image, bool concatenate_horizontaly = true)
+
+// --- Transformation Algorithms
+
+fill::Image fill::Image::merge_images(const Image& image, bool merge_horizontaly)
 {
-	// ----- WARNING
-	// NEED to add more options to convert images to formats they both support if they aren't the same
-	// Good for now
-
-	if (concatenate_horizontaly)
-	{
-		std::uint32_t new_width = width + image.getWidth();
-		std::uint32_t new_height{};
-
-		if (height > image.getHeight())
-		{
-			new_height = height;
-
-			while (image.size() < size())
-			{
-				image.getImage().push_back(0);
-			}
-		}
-		else
-		{
-			new_height = image.getHeight();
-
-			while (size() < image.size())
-			{
-				image_data.push_back(0);
-			}
-		}
-
-		// TODO: make function to make one image hold the same parameters as the other
-
-		short bpp{ color_channel * bit_depth }; /*assume both images have the same values (for now)*/
-		short width_bytes_1{ width * bpp };
-		short width_bytes_2{ image.getWidth() * bpp };
-
-
-		for (std::uint64_t index_byte{}; index_byte < image_data.size(); index_byte++)
-		{
-			if (index_byte % width_bytes_1 == 0) /*start of line*/
-			{
-				std::uint64_t line_index{ index_byte / width_bytes_1 };
-
-				//image_data.insert(image_data.begin() + index_byte + width_bytes_1, )
-			}
-			
-		}
-
-
-		
-	}
-	else
-	{
-		height += image.getHeight();
-		width = (width > image.getWidth() ? width : image.getWidth());
-
-
-
-	}
-
-
+	return Image();
 }
 
+fill::Image fill::Image::resize(std::uint32_t new_width, std::uint32_t new_height)
+{	
+	Image background{};
+	std::uint32_t new_size{ new_width * new_height * bpp * bpp };
+
+	while (background.size() < new_size)
+		background.getImage().push_back(0);
+
+
+	background.setWidth(new_width);
+	background.setHeight(new_height);
+
+	background.insert(*this, 0);
+
+	return background;
+}
+
+fill::Image fill::Image::insert(Image& other, std::uint32_t offset)
+{
+	Image new_image{};
+
+	new_image.setWidth(std::max(width, other.getWidth()));
+	new_image.setHeight(std::max(height, other.getHeight()));
+
+	
+
+	offset = std::min(offset, new_image.getWidth() - std::min(width, other.getWidth()));
+
+	offset *= bpp;
+	
+	while (new_image.size() < new_image.size_bytes())
+		new_image.getImage().push_back(0xFF); /*make up space*/
+
+	
+	std::uint64_t line{};
+
+	std::uint64_t oWidth_bytes{ getWidth() * bpp };
+
+	for (size_t i{}; i < new_image.size_bytes(); i += new_image.getWidth() * 4)
+	{
+		if (line * getWidth() * bpp < size())
+		{
+			new_image.getImage().insert(
+				new_image.getImage().begin() + i + offset, /*start of line n of original image*/
+				getImage().begin() + line * oWidth_bytes, /*start of line n of other image */
+				getImage().begin() + line * oWidth_bytes + oWidth_bytes /*end of line n of other image*/
+			);
+
+			new_image.getImage().insert(
+				new_image.getImage().begin() + i + line * oWidth_bytes + oWidth_bytes, /*end of line n of original image*/
+				new_image.getWidth() * bpp - oWidth_bytes, /*calculate how many bytes are left between end of original image and other*/
+				0xFF /*set to 0 for transparency (don't want to alter the image)*/
+			);
+		}
+
+		line++;
+	}
+
+
+	// Crop image to fit
+	new_image.getImage().erase(new_image.getImage().begin() + new_image.getWidth() * new_image.getHeight() * bpp, new_image.getImage().end());
+
+	return new_image;
+}
+
+
+
+
+
+// --- PNG loading
 
 void fill::Image::loadFromPNG(const std::filesystem::path& path_png)
 {
@@ -314,7 +333,6 @@ void fill::Image::loadFromPNG(const std::filesystem::path& path_png)
 	}
 	else
 		throw std::runtime_error("ERROR::WRONG_TYPE::PNG file couldn't be read properly::No proper header");
-
 }
 
 void fill::Image::read_PNGchunk(std::ifstream& stream, Chunk& chunk)
@@ -434,3 +452,5 @@ void fill::Image::unfilter_PNG(std::vector<std::uint8_t>& filtered_data)
 		image_data.push_back(data);
 	}
 }
+
+// --- 

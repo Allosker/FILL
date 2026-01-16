@@ -21,7 +21,9 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include <span>
+
+#include <algorithm>
+#include <cctype>
 // DEFLATE algorithm
 #include "zlib.h"
 
@@ -29,13 +31,6 @@ struct Chunk;
 
 namespace fill
 {
-	inline void read_uint32(std::ifstream& stream, std::uint32_t& integer) noexcept;
-
-	inline std::uint32_t uint8_as_uint32(std::uint8_t byte0, std::uint8_t byte1, std::uint8_t byte2, std::uint8_t byte3) noexcept;
-	inline std::string uint32_as_string(std::uint32_t _string) noexcept;
-
-	inline std::vector<std::uint8_t> inflate(const std::vector<std::uint8_t>& in, std::uint32_t chunk_size = 16384);
-
 
 	class Image
 	{
@@ -45,6 +40,9 @@ namespace fill
 
 		Image(const std::filesystem::path& path_to_file);
 
+		Image(Image&&) noexcept = default;
+		Image& operator=(Image&&) noexcept = default;  
+
 		Image() noexcept = default;
 
 
@@ -52,10 +50,11 @@ namespace fill
 
 		void loadFromFile(const std::filesystem::path& path_to_file);
 
-		// For this function to work, both images must have:
-		// Same bit_depth, same color type
-		// Note: this will be changed later
-		void concatenate_images(Image&& image, bool concatenate_horizontaly=true);
+		Image merge_images(const Image& image, bool merge_horizontaly=true);
+
+		Image resize(std::uint32_t new_width, std::uint32_t new_height);
+
+		Image insert(Image& other, std::uint32_t offset);
 
 
 	// == Getters
@@ -68,11 +67,19 @@ namespace fill
 
 		// size in bytes
 		const size_t size() const noexcept { return image_data.size(); }
+		const std::uint32_t size_bytes() const noexcept { return width * height * bpp; }
 
 		const std::uint8_t* data() const noexcept { return image_data.data(); }
 		std::uint8_t* data() noexcept { return image_data.data(); }
 
 		std::vector<std::uint8_t>& getImage() noexcept { return image_data; }
+
+
+	// == Setters
+
+		void setWidth(std::uint32_t new_width) noexcept { width = new_width; }
+
+		void setHeight(std::uint32_t new_height) noexcept { height = new_height; }
 
 
 	private: 
@@ -94,6 +101,8 @@ namespace fill
 		std::uint32_t width{}, height{};
 		std::uint8_t bit_depth{};
 		std::uint8_t color_channel{};
+
+		std::uint8_t bpp{ 4 };
 
 		// Additional PNG options
 		std::uint8_t compression_method{}, filter_method{}, interlace_method{};
