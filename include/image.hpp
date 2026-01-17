@@ -73,6 +73,8 @@ namespace fill
 		std::uint8_t* data() noexcept { return image_data.data(); }
 
 		std::vector<std::uint8_t>& getImage() noexcept { return image_data; }
+		const std::vector<std::uint8_t>& getImage() const noexcept { return image_data; }
+
 
 
 	// == Setters

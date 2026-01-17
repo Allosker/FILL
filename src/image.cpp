@@ -1,6 +1,7 @@
 #include "image.hpp"
 
 #include <array>
+#include <cmath>
 
 // Utility Classes
 
@@ -18,7 +19,7 @@ struct ColorType
 {
 	ColorType() = default;
 
-	ColorType(std::uint8_t t)
+	explicit constexpr ColorType(const std::uint8_t t)
 		: type{ static_cast<Type>(t) }
 	{
 	}
@@ -33,7 +34,7 @@ struct ColorType
 		TrueColor_with_Alpha = 6
 	};
 
-	std::uint8_t asBytes()
+	constexpr std::uint8_t asBytes() const
 	{
 		switch (type)
 		{
@@ -349,14 +350,14 @@ void fill::Image::read_PNGchunk(std::ifstream& stream, Chunk& chunk)
 
 void fill::Image::unfilter_PNG(std::vector<std::uint8_t>& filtered_data)
 {
-	short bpp{ color_channel * (bit_depth / 8) };
+	const auto bpp{ static_cast<std::uint16_t>(color_channel * (bit_depth / 8)) };
 
-	std::uint32_t width_bytes{ width * bpp };
+	const std::uint32_t width_bytes{ width * bpp };
 
 	std::uint8_t filter{};
 
 	std::uint8_t a{}, b{}, c{};
-	short p{}, pa{}, pb{}, pc{};
+	std::uint16_t p{}, pa{}, pb{}, pc{};
 
 	std::uint8_t data{};
 
