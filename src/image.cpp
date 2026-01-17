@@ -57,6 +57,10 @@ struct ColorType
 		case TrueColor_with_Alpha:
 			return 4;
 			break;
+
+		default:
+			throw std::runtime_error("ERROR::DEFLATE::No corresponding color type\n");
+			break;
 		}
 	}
 

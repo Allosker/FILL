@@ -49,12 +49,20 @@ install(
 )
 
 install(
+    TARGETS FILL zlibstatic
+    EXPORT FILLtargets_libs
+)
+
+install(
 	DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
 	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 install(
 	EXPORT FILLtargets
+	EXPORT FILLtargets_libs
 	NAMESPACE FILL::
 	DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FILL
 )
+
+
